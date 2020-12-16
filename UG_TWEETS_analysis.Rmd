@@ -1,0 +1,69 @@
+---
+title: "CIPESA Research UG Tweets Perceptions and Sentiments Analysis"
+author: "researchers@bugdesks"
+date: November 2020
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    fig_width: 6
+    fig_height: 6
+cache: yes
+---
+
+#=============
+# LOAD R LIBRARIES AND PACKAGES. 
+#=============
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(janitor) # janitizing the data quick manips. 
+library(hutils)
+library(rtweet) # read in the twitter data file while keeping the format. 
+# library(MASS)  # get a dataset for testing format and manipulation
+
+```
+#=============
+# GET RAW DATA
+#=============
+
+```{r}
+cipesa <- read_tsv("~/CIPESA/geotest_edit.csv") # data downloaded from twitter from folder.  
+# TODO: seems tab separated from the dump, follow up with @Joachim if this standard. 
+str(cipesa) # check all the data types for analysis. 
+
+```
+
+#=============
+# CLEANING THE DATA FORMATS
+#=============
+
+```{r}
+# script here shorturl.at/myW28
+cipesa_HASHTAG <- cipesa 
+hashtag_pat <- "#[a-zA-Z0-9_-ー\\.]+"
+hashtag <- str_extract_all(cipesa_HASHTAG$tweet, hashtag_pat)
+
+# clean up, unlist to proper text. 
+hashtag_word <- unlist(hashtag)
+hashtag_word <- tolower(hashtag_word)
+hashtag_word <- gsub("[[:punct:]ー]", "", hashtag_word)
+
+# analyse basics data. 
+hashtag_count <- table(hashtag_word)
+top_20_freqs <- sort(hashtag_count, decreasing = TRUE)[1:20]
+
+# Visualize the top n tweets. 
+as.data.frame(hashtag_word) %>%
+  count(hashtag_word, sort = TRUE) %>%
+  mutate(hashtag_word = reorder(hashtag_word, n)) %>%
+  top_n(20) %>%
+  ggplot(aes(x = hashtag_word, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Count",
+       y = "Hashtag",
+       title = "Top 20 Popular Hashtags from Uganda ")
+
+```
