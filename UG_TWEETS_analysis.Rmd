@@ -36,7 +36,7 @@ str(cipesa) # check all the data types for analysis.
 ```
 
 #=============
-# CLEANING THE DATA FORMATS
+# CLEANING HASHTAGS DATA 
 #=============
 
 ```{r}
@@ -65,5 +65,101 @@ as.data.frame(hashtag_word) %>%
   labs(x = "Count",
        y = "Hashtag",
        title = "Top 20 Popular Hashtags from Uganda ")
+
+```
+#=============
+# CLEANING DATA FRAME AND FORMATS
+# EXPLORATORY DATA ANALYSIS ON MAIN DATA POINTS
+#=============
+
+```{r}
+# script here shorturl.at/pCDH8
+cipesa_CLEAN <- cipesa %>%
+  dplyr::select(conversation_id, created_at, date, time, username,
+                tweet,retweets_count, likes_count, hashtags, geo, photos, video) %>%
+  dplyr::filter(hashtags != "[]")
+
+# plot testing by date/time see trends over the day. 
+ts_plot(cipesa_CLEAN, "hours") +
+  labs(x = NULL, y = NULL,
+       title = "Frequency of tweets trending Uganda hashtag",
+       subtitle = paste0(min(cipesa_CLEAN$created_at), " to ", max(cipesa_CLEAN$created_at)),
+       caption = "Data collected from Twitter's UG tweeps") +
+  theme_minimal()
+
+# check tweet locations, many turned off though. 
+cipesa_LINK <- cipesa %>%
+   # filter(!is.na(urls)) %>% 
+  filter(urls != "[]") %>%
+  count(urls, sort = TRUE) %>% 
+  top_n(20) -> cipesa_LINK
+
+# most re-tweeted tweets. 
+# This will come in handy to get the top discussions across the weeks/days.
+cipesa_RETWEETED <- cipesa %>%
+  dplyr::arrange(desc(retweets_count)) %>%
+  #dplyr::slice(120) %>% 
+  dplyr::select(created_at, username, tweet, retweets_count) %>%
+  head()
+cipesa_RETWEETED
+
+# most liked tweet 
+cipesa_LIKED <- cipesa %>%
+  dplyr::arrange(desc(likes_count)) %>%
+  #dplyr::slice(120) %>% 
+  dplyr::select(created_at, username, tweet, likes_count) %>%
+  head()
+cipesa_LIKED
+
+# top tweeters or tweeps
+cipesa_TWEEP <- cipesa %>%
+  dplyr::count(username, sort = TRUE) %>%
+  top_n(10) %>%
+  mutate(screen_name = paste0("@", username))
+
+
+# top emoji or emoticon used. 
+library(emo)
+cipesa_EMO <- cipesa %>%
+  mutate(emoji = ji_extract_all(tweet)) %>%
+  unnest(cols = c(emoji)) %>%
+  count(emoji, sort = TRUE) %>%
+  top_n(10)
+
+# top hashtags across. 
+cipesa_HASHTAGS <- cipesa %>%
+  tidytext::unnest_tokens(hashed, tweet, "tweets", to_lower = FALSE) %>% # splits across the rows. 
+  filter(str_detect(hashed, "^#")) %>%
+  count(hashed, sort = TRUE) %>%
+  top_n(20)
+
+# top mentions. 
+# Let's also tokenise the text each tweet and use str_detect()
+cipesa_MENTIONS <- cipesa %>%
+  tidytext::unnest_tokens(mentions, tweet, "tweets", to_lower = FALSE) %>%
+  filter(str_detect(mentions, "^@")) %>%  
+  count(mentions, sort = TRUE) %>%
+  top_n(20)
+
+
+# top words being used across. 
+# TODO: check issue with the tidytext::stop_words why won't work without explicit mention. 
+library(wordcloud)
+
+cipesa_MENTIONS <- cipesa %>%
+  mutate(tweet = str_remove_all(tweet, "&amp;|&lt;|&gt;"),
+         tweet = str_remove_all(tweet, "\\s?(f|ht)(tp)(s?)(://)([^\\.]*)[\\.|/](\\S*)"),
+         tweet = str_remove_all(tweet, "[^\x01-\x7F]")) %>% 
+  tidytext::unnest_tokens(word, tweet, token = "tweets", to_lower = FALSE) %>%
+  filter(!word %in% tidytext::stop_words$word,
+        !word %in% str_remove_all(tidytext::stop_words$word, "'"),
+        str_detect(word, "[a-z]"),
+        !str_detect(word, "^#"),         
+        !str_detect(word, "@\\S+")) %>%
+  count(word, sort = TRUE)
+
+# visualize the cloud
+cipesa_MENTIONS %>% 
+  with(wordcloud(word, n, random.order = FALSE, max.words = 100, colors = "#F29545"))
 
 ```
