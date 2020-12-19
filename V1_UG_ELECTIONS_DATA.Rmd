@@ -1,0 +1,107 @@
+---
+title: "CIPESA data analysis for UG Tweets Perceptions and Sentiments Analysis"
+author: "researchers@bugdesks"
+date: December 2020
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    fig_width: 6
+    fig_height: 6
+cache: yes
+---
+
+#=============
+# LOAD R LIBRARIES AND PACKAGES. 
+#=============
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(janitor) # janitizing the data quick manips. 
+library(hutils)
+library(rtweet) # read in the twitter data file while keeping the format. 
+library(ggthemes)
+
+```
+#=============
+# GET RAW DATA
+#=============
+
+```{r}
+# This is the main DF for the final run on datasets with all having hashtags. 
+cipesa_DF <- read_tsv("~/CIPESA/geotest_edit.csv") # data downloaded from twitter from folder.  
+
+# TODO: FIX this, prefer .csv seems tab separated from the dump, follow up with @Joachim if this standard. 
+# str(cipesa) # check all the data types for analysis. 
+
+# read the modified file from research assistants with the new affiliation scoring. 
+#TODO: @bugdesks make this read from google spreadsheet and not local file as work with research assistants. 
+V1_UG_ELECTIONS_HASHTAGS_DF <- read_csv("~/CIPESA/V1_UG_ELECTIONS_HASHTAGS.csv") # data downloaded from twitter from folder.  
+
+
+```
+
+#=============
+# GET FIRST MERGE AND CLEAN DATA
+# FOR MAIN EXPLORATORY
+#=============
+
+```{r}
+# TODO: Fix the data loss truncation with BigInts??????
+# script here 
+cipesa_EXPLORE_HASHTAGS_DF <- cipesa_DF %>%
+  dplyr::select(-c(photos, quote_url), -c(source:trans_dest)) %>% #TODO: better script clean up unnecessary columns.
+  dplyr::mutate(id = as.character(id), conv_id = as.character(conversation_id), user_id = as.character(user_id)) %>%
+  tidytext::unnest_tokens(hashtag, tweet, "tweets", to_lower = FALSE) %>% # splits across the rows. 
+  filter(str_detect(hashtag, "^#"))
+
+
+# Merge into the main df: cipesa_HASHTAGS_AFFILIATION to populate the data with respective affiliations across. 
+# Annotate and clean variables required for analysis. 
+
+cipesa_HASHTAGS_AFFILIATION_JOINED_DF <- left_join(cipesa_EXPLORE_HASHTAGS_DF, V1_UG_ELECTIONS_HASHTAGS, by = 'hashtag')
+  
+```
+
+
+#=============
+# GET FIRST VISUALIZATIONS 
+# ONSET DATA UNDERSTANDING AND PREVIEWS
+#=============
+
+```{r}
+# TODO: Visualization playgrounds. 
+# format the data and summarize the variables per dates. 
+cipesa_EXPLORE_HASHTAGS_SUMMARY <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+   mutate(created_year = year(created_at),
+         created_month = month(created_at, label=T, abbr=T),
+         created_week = strftime(created_at,"%W"),
+         created_hour = format(as.POSIXct(time,format="%H:%M:%S"),"%H")) %>%
+  dplyr::select(created_hour, affiliation) %>%
+  dplyr::group_by(created_hour, affiliation) %>%
+  dplyr::summarise(total_tweets = n()) %>%
+  dplyr::mutate(created_hour = factor(created_hour, levels = c(13, 14, 15, 16, 17, 18, 19, 20, 21, 22,23, 00, 01, 02, 03, 04)))
+
+
+
+# plot the graph trends. 
+# Multiple line plot
+ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(x = created_hour, y = total_tweets)) + 
+  geom_line(aes(color = affiliation), size = 1, group = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800","#FC4E07" )) +
+  theme_minimal()
+
+
+
+
+# Area plot
+ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(x = created_hour, y = total_tweets)) + 
+  geom_area(aes(color = affiliation, fill = affiliation), 
+            alpha = 0.5) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800","#FC4E07" )) +
+  scale_fill_manual(values = c("#00AFBB", "#E7B800","#FC4E07" ))
+
+
+  
+```
