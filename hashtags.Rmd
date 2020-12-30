@@ -1,0 +1,126 @@
+---
+title: "Hashtags Clean Script to Aggregate all Hashtags Used by Influencers in Uganda 2020 leading to the Elections, 2021"
+author: "researchers@bugdesks"
+date: December 2020
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    fig_width: 6
+    fig_height: 6
+cache: yes
+---
+
+#=============
+# LOAD R LIBRARIES AND PACKAGES. 
+#=============
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(janitor) # janitizing the data quick manips. 
+library(rtweet) # read in the twitter data file while keeping the format. 
+library(hutils) # var names cleanup. 
+```
+#=============
+# GET RAW DATA
+#=============
+
+```{r}
+# This is the main DF for the final run on datasets with all having hashtags. 
+tags_merc_DF <- read_csv("~/Downloads/MercMerge.csv") 
+tags_news_DF <- read_csv("~/Downloads/UOT_influencer_news_orgs.csv") 
+tags_ind_DF <- read_csv("~/Downloads/UOT_inf_indiv.csv")
+
+# final dump seems different data types. 
+tags_gov_DF <- read_csv("~/Downloads/UOT_inf_gov.csv") 
+tags_gov_DF <- tags_gov_DF[1:500, 1:12]
+
+
+# data downloaded from twitter from folder.
+```
+
+#=============
+# GET CLEAN DATA
+#=============
+
+```{r}
+# 
+tags_CLEAN <- tags_merc_DF %>%
+  clean_names() %>%
+  dplyr::select(datetime, text, username) %>%
+  mutate(datetime = as.POSIXct(datetime, origin="1970-01-01"),
+         year = year(datetime),
+         month = month(datetime, label=T, abbr=T),
+         week = strftime(datetime,"%W"),
+         day = as.Date(datetime, format = "%Y-%m-%d")) %>%
+  filter(year == 2020, month %in% c("Nov", "Dec")) # filter for only months. 
+```
+
+```{r}
+# Checking main Nov, Dec months for hashtags monitoring.
+tags_HASHTAGS <- tags_CLEAN %>%
+  tidytext::unnest_tokens(hashtag, text, "tweets", to_lower = FALSE) %>% 
+  filter(str_detect(hashtag, "^#")) %>%
+  mutate_if(is.character, str_to_lower) 
+
+
+# to Df for specific data frame. 
+tags_merc_DF <- tags_HASHTAGS
+tags_news_DF <- tags_HASHTAGS
+tags_ind_DF <- tags_HASHTAGS
+tags_gov_DF <- tags_HASHTAGS
+
+
+# Lets bind these into Master df using bind_rows
+tags_MASTER_A <- bind_rows(tags_merc_DF, tags_news_DF )
+tags_MASTER_B <- bind_rows(tags_ind_DF, tags_gov_DF)
+
+# main df for analysis of total hashtags. 
+tags_MASTER_DF <- bind_rows(tags_MASTER_A, tags_MASTER_B)
+
+
+top_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(5) %>%
+  ungroup(.) %>%
+  select(hashtag)
+
+
+  
+# Selections 
+final_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::filter(hashtag %in% top_TAGS_HASHTAGS$hashtag) %>%
+  dplyr::group_by(day, hashtag) %>%
+  dplyr::summarise(tweets = n())
+  
+# trial graph. 
+ggplot(final_TAGS_HASHTAGS, aes(x = day, y = tweets)) + 
+  geom_line(aes(color = hashtag, linetype = hashtag)) 
+
+# Write for testing
+write.csv(top_TAGS_HASHTAGS, file="~/CIPESA/FINAL_tags_HASHTAGS.csv",
+          row.names=FALSE)
+
+
+
+
+```
+
+
+```{r}
+# Checking the data and limiting to specific months for review.
+tags_MANIPS <- tags_MASTER_DF %>%
+  filter(year == 2020, month %in% c("Nov", "Dec")) %>%
+  dplyr::group_by(day) %>%
+  dplyr::summarise(tweets = n())
+  
+
+# viz on this data. 
+ggplot(data=tags_MANIPS,
+       aes(x=day, y=tweets)) +
+       geom_line()
+```
+

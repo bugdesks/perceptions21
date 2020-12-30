@@ -29,7 +29,7 @@ library(rtweet) # read in the twitter data file while keeping the format.
 #=============
 
 ```{r}
-cipesa <- read_tsv("~/CIPESA/geotest_edit.csv") # data downloaded from twitter from folder.  
+cipesa <- read_csv("~/Downloads/sample_hashtag.csv") # data downloaded from twitter from folder.  
 
 # TODO: seems tab separated from the dump, follow up with @Joachim if this standard. 
 str(cipesa) # check all the data types for analysis. 
@@ -133,7 +133,7 @@ cipesa_HASHTAGS <- cipesa %>%
   tidytext::unnest_tokens(hashed, tweet, "tweets", to_lower = FALSE) %>% # splits across the rows. 
   filter(str_detect(hashed, "^#")) %>%
   count(hashed, sort = TRUE) %>%
-  top_n(20)
+  top_n(100)
 cipesa_HASHTAGS
 
 # top mentions. 

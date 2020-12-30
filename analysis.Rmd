@@ -1,0 +1,282 @@
+---
+title: "MAIN ANALYSIS - CIPESA Research UG Tweets Perceptions and Sentiments Analysis"
+author: "researchers@bugdesks"
+date: November 2020
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    fig_width: 6
+    fig_height: 6
+cache: yes
+---
+
+#=============
+# LOAD R LIBRARIES AND PACKAGES. 
+#=============
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(ggthemes)
+library(janitor) # janitizing the data quick manips. 
+library(hutils)
+library(rtweet) # read in the twitter data file while keeping the format. 
+
+```
+#=============
+# GET RAW DATA
+#=============
+
+```{r}
+cipesa <- read_tsv("~/Downloads/FINALHashtagsMerged.csv") # data downloaded from twitter from folder.  
+cipesa2 <- read_tsv("~/Downloads/hashtagMerge2.csv") # data downloaded from twitter from folder.  
+
+
+
+# TODO: seems tab separated from the dump, follow up with @Joachim if this standard. 
+str(cipesa) # check all the data types for analysis. 
+
+```
+
+
+#=============
+# CLEANING DATA FRAME AND FORMATS
+#=============
+
+```{r}
+# script here shorturl.at/pCDH8
+cipesa_CLEAN2 <- cipesa2 %>%
+    clean_names() %>%
+  mutate(
+         year = year(date),
+         month = month(date, label=T, abbr=T),
+         week = strftime(date,"%W"),
+         day = as.Date(date, format = "%Y-%m-%d")) %>%
+  filter(year == 2020, month %in% c("Nov", "Dec")) %>% # filter months. 
+  dplyr::filter(hashtags != "[]")
+  
+# Write clean Nov - Dec dataset. RAW_nov_dec.csv
+# write.csv(cipesa_CLEAN, file="~/CIPESA/RAW_nov_dec.csv",
+#          row.names=FALSE)
+ 
+``` 
+  
+```{r}
+# Checking the data and limiting to specific months for review.
+tags_MANIPS <- cipesa_CLEAN %>%
+  dplyr::group_by(day) %>%
+  dplyr::summarise(tweets = n())
+  
+
+# viz on this data. 
+ggplot(data=tags_MANIPS,
+       aes(x=day, y=tweets)) +
+       geom_line()
+``` 
+
+
+#=============
+# GET FIRST MERGE AND CLEAN DATA
+# FOR MAIN EXPLORATORY
+#=============
+
+```{r}
+# TODO: Fix the data loss truncation with BigInts??????
+# script here 
+cipesa_EXPLORE_HASHTAGS_DF2 <- cipesa_CLEAN2 %>%
+  dplyr::select(-c(photos, quote_url),
+                -c(source:trans_dest)) %>% 
+  dplyr::mutate(id = as.character(id), 
+                conv_id = as.character(conversation_id), 
+                user_id = as.character(user_id),
+                text = tweet) %>%
+  tidytext::unnest_tokens(hashtag, tweet, 
+                          "tweets", 
+                          to_lower = FALSE) %>%
+  filter(str_detect(hashtag, "^#")) %>%
+  mutate_if(is.character, str_to_lower) 
+
+# Merge into the main df: cipesa_HASHTAGS_AFFILIATION to populate the data with respective affiliations across. 
+# Annotate and clean variables required for analysis. 
+
+# NOTE: additional scrape to pull #StopHooliganism and #FreeBobiWine
+# merge dataframes 1 and 2 
+cipesa_EXPLORE_HASHTAGS_DF <- bind_rows(cipesa_EXPLORE_HASHTAGS_DF, cipesa_EXPLORE_HASHTAGS_DF2)
+# note dim(cipesa_EXPLORE_HASHTAGS_DF)
+# [1] 2169976      31
+
+
+#TODO: @bugdesks make this read from google spreadsheet and not local file as work with research assistants. 
+V1_UG_ELECTIONS_HASHTAGS_DF <- read_csv("~/CIPESA/perceptions21/Data/V1_UG_ELECTIONS_HASHTAGS.csv")
+
+
+cipesa_HASHTAGS_AFFILIATION_JOINED_DF <- left_join(cipesa_EXPLORE_HASHTAGS_DF, V1_UG_ELECTIONS_HASHTAGS_DF, by = 'hashtag')
+  
+```
+
+
+  
+```{r}
+# breakdwon check the top hashtags again. 
+# descending order across. 
+top_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) 
+
+
+
+
+
+# Multiple line plot
+ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(x = day, y = hashtags)) +
+geom_line(aes(color = source), size = 1, group = 1) +
+scale_color_manual(values = c("#00AFBB", "#E7B800","#FC4E07" )) +
+theme_minimal()
+
+
+
+```
+
+
+
+
+```{r}
+# TODO: Visualization playgrounds. 
+# Note: use of cumsums http://datacornering.com/cumulative-sum-or-count-in-r/
+# format the data and summarize the variables per dates. 
+cipesa_EXPLORE_HASHTAGS_SUMMARY <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::select(day, source) %>%
+  dplyr::group_by(day, source) %>%
+  dplyr::summarise(hashtags = n()) %>%
+  ungroup(.) %>%
+  dplyr::group_by(source) %>%
+  mutate("cm_hashtags" = cumsum(hashtags)) # use of cumsums 
+
+
+# plot the graph trends. 
+# Multiple line plot
+# https://stackoverflow.com/questions/3777174/plotting-two-variables-as-lines-using-ggplot2-on-the-same-graph
+ggplot(data=cipesa_EXPLORE_HASHTAGS_SUMMARY,
+       aes(x=day, y=cm_hashtags, colour=source)) +
+       geom_line() + 
+  scale_color_manual(values = c("#00AFBB", "#E7B800","#FC4E07" )) +
+  theme_minimal()
+
+
+# barplot trial. 
+t <- ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(day, weight = hashtags))
+t + geom_histogram(colour = "white", fill = "red")
+
+
+
+# Plot per hashtag graph for all the hashtags that trended. 
+# Per hashtag. 
+top_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(10) %>%
+  ungroup(.) %>%
+  select(hashtag)
+
+
+  
+# Selections 
+final_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::filter(hashtag %in% top_TAGS_HASHTAGS$hashtag) %>%
+  dplyr::group_by(day, hashtag) %>%
+  dplyr::summarise(tweets = n())
+  
+# trial graph. 
+ggplot(final_TAGS_HASHTAGS, aes(x = day, y = tweets)) + 
+  geom_line(aes(color = hashtag, linetype = hashtag)) 
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+# most re-tweeted tweets. 
+# This will come in handy to get the top discussions across the weeks/days.
+cipesa_RETWEETED <- cipesa_CLEAN %>%
+  dplyr::arrange(desc(retweets_count)) %>%
+  #dplyr::slice(120) %>% 
+  dplyr::select(created_at, username, tweet, retweets_count) %>%
+  head()
+cipesa_RETWEETED
+
+# most liked tweet 
+cipesa_LIKED <- cipesa_CLEAN %>%
+  dplyr::arrange(desc(likes_count)) %>%
+  #dplyr::slice(120) %>% 
+  dplyr::select(created_at, username, tweet, likes_count) %>%
+  head()
+cipesa_LIKED
+
+# top tweeters or tweeps
+cipesa_TWEEP <- cipesa_CLEAN %>%
+  dplyr::count(username, sort = TRUE) %>%
+  top_n(10) %>%
+  mutate(screen_name = paste0("@", username))
+cipesa_TWEEP
+
+# top emoji or emoticon used. 
+library(emo)
+cipesa_EMO <- cipesa_CLEAN %>%
+  mutate(emoji = ji_extract_all(tweet)) %>%
+  unnest(cols = c(emoji)) %>%
+  count(emoji, sort = TRUE) %>%
+  top_n(10)
+cipesa_EMO
+
+# top hashtags across. 
+cipesa_HASHTAGS <- cipesa_CLEAN %>%
+  tidytext::unnest_tokens(hashed, tweet, "tweets", to_lower = FALSE) %>% # splits across the rows. 
+  filter(str_detect(hashed, "^#")) %>%
+  count(hashed, sort = TRUE) %>%
+  top_n(100)
+cipesa_HASHTAGS
+
+# top mentions. 
+# Let's also tokenise the text each tweet and use str_detect()
+cipesa_MENTIONS <- cipesa %>%
+  tidytext::unnest_tokens(mentions, tweet, "tweets", to_lower = FALSE) %>%
+  filter(str_detect(mentions, "^@")) %>%  
+  count(mentions, sort = TRUE) %>%
+  top_n(20)
+cipesa_MENTIONS
+
+# top words being used across. 
+# TODO: check issue with the tidytext::stop_words why won't work without explicit mention. 
+library(wordcloud)
+
+cipesa_MENTIONS <- cipesa %>%
+  mutate(tweet = str_remove_all(tweet, "&amp;|&lt;|&gt;"),
+         tweet = str_remove_all(tweet, "\\s?(f|ht)(tp)(s?)(://)([^\\.]*)[\\.|/](\\S*)"),
+         tweet = str_remove_all(tweet, "[^\x01-\x7F]")) %>% 
+  tidytext::unnest_tokens(word, tweet, token = "tweets", to_lower = FALSE) %>%
+  filter(!word %in% tidytext::stop_words$word,
+        !word %in% str_remove_all(tidytext::stop_words$word, "'"),
+        str_detect(word, "[a-z]"),
+        !str_detect(word, "^#"),         
+        !str_detect(word, "@\\S+")) %>%
+  count(word, sort = TRUE)
+cipesa_MENTIONS
+# visualize the cloud
+cipesa_MENTIONS %>% 
+  with(wordcloud(word, n, random.order = FALSE, max.words = 100, colors = "#F29545"))
+
+```
