@@ -108,11 +108,19 @@ cipesa_EXPLORE_HASHTAGS_DF <- bind_rows(cipesa_EXPLORE_HASHTAGS_DF, cipesa_EXPLO
 
 
 #TODO: @bugdesks make this read from google spreadsheet and not local file as work with research assistants. 
-V1_UG_ELECTIONS_HASHTAGS_DF <- read_csv("~/CIPESA/perceptions21/Data/V1_UG_ELECTIONS_HASHTAGS.csv")
+V1_UG_ELECTIONS_HASHTAGS_DF <- read_csv("~/CIPESA/perceptions21/Data/V1_UG_ELECTIONS_HASHTAGS_DF.csv")
 
 
 cipesa_HASHTAGS_AFFILIATION_JOINED_DF <- left_join(cipesa_EXPLORE_HASHTAGS_DF, V1_UG_ELECTIONS_HASHTAGS_DF, by = 'hashtag')
+
+# TODO: @bugdesks FINAL DATASET FOR ANALYSIS
+# FILE: cipesa_HASHTAGS_AFFILIATION_JOINED_DF
+write.csv(cipesa_HASHTAGS_AFFILIATION_JOINED_DF, file="~/CIPESA/perceptions21/Data/cipesa_HASHTAGS_AFFILIATION_JOINED_DF.csv",
+          row.names=FALSE)
   
+# read the file. 
+cipesa_HASHTAGS_AFFILIATION_JOINED_DF <- read_csv("~/CIPESA/perceptions21/Data/cipesa_HASHTAGS_AFFILIATION_JOINED_DF.csv") # data downloaded from twitter from folder.  
+
 ```
 
 
@@ -120,27 +128,82 @@ cipesa_HASHTAGS_AFFILIATION_JOINED_DF <- left_join(cipesa_EXPLORE_HASHTAGS_DF, V
 ```{r}
 # breakdwon check the top hashtags again. 
 # descending order across. 
-top_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+top_TAGS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
   dplyr::group_by(hashtag) %>%
   dplyr::summarise(tweets = n()) %>%
   dplyr::arrange(desc(tweets)) 
 
 
+```
+
+# part 2 follow up questions from CIPESA. 
+# TODO: @bugdesks reasearch. 
+
+```{r}
+# breakdown check the top hashtags again. 
+# descending order across. 
+top_TAGS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) 
 
 
+# breakdwon check the top actors/tweeps again. 
+# descending order across. 
+top_TAGS_TWEEPS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::group_by(username) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(100) %>%
+  ungroup(.) %>%
+  select(username)
 
-# Multiple line plot
-ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(x = day, y = hashtags)) +
-geom_line(aes(color = source), size = 1, group = 1) +
-scale_color_manual(values = c("#00AFBB", "#E7B800","#FC4E07" )) +
-theme_minimal()
+# print all 1k to spreadsheet. 
+top_TAGS_TWEEPS <- head(top_TAGS_TWEEPS, 1000)
 
+# FILE: top users. 
+write.csv(top_TAGS_TWEEPS, file="~/CIPESA/perceptions21/Data/top_TAGS_TWEEPS.csv",
+          row.names=FALSE)
+
+
+top_TAGS_SCATTER <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::filter(username %in% top_TAGS_TWEEPS$username) %>%
+  dplyr::group_by(username, date) %>%
+  dplyr::summarise(tweets = n()) 
+
+# plot tweets across. 
+qplot(x=date, y=tweets,
+      data=top_TAGS_SCATTER, na.rm=TRUE,
+      main="Top 1k users tweets\n Nov-Dec 2020",
+      xlab="Date", ylab="hashtag tweets")
+
+
+# break down as per media and individuals. 
+top_TAGS_TWEEPS_VIZ <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::group_by(username) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(100) %>%
+  mutate(media = case_when(username %in% c('nbstv', 'chimpreports', 'ntvuganda', 'nilepostnews', 'sanyukatv', 'dailymonitor', 'ug_edge', 'newvisionwire', 'recordtvug', 'thepearltimes', 'urbantvuganda', 'bbstvug', 'watchdogug', 'watsupafrica') ~ "News")) %>%
+  filter(!is.na(media)) 
+
+options(scipen=10000)
+top_TAGS_TWEEPS_VIZ %>%
+ggplot() + geom_bar(aes(reorder(username,tweets),tweets, fill = username), stat = 'identity') + 
+  scale_fill_viridis_d() +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + labs(
+    title = 'Media Houses tweets with hasgtags in set',
+    x = 'Media Handle') 
 
 
 ```
 
 
-
+#=============
+# GRAPH - 1 
+# PERCEPTIONS SENTIMENTS OVER TIME. 
+#=============
 
 ```{r}
 # TODO: Visualization playgrounds. 
@@ -148,6 +211,7 @@ theme_minimal()
 # format the data and summarize the variables per dates. 
 cipesa_EXPLORE_HASHTAGS_SUMMARY <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
   dplyr::select(day, source) %>%
+  replace(., is.na(.), "generic") %>% # replaces any empty mappings. 
   dplyr::group_by(day, source) %>%
   dplyr::summarise(hashtags = n()) %>%
   ungroup(.) %>%
@@ -158,33 +222,498 @@ cipesa_EXPLORE_HASHTAGS_SUMMARY <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
 # plot the graph trends. 
 # Multiple line plot
 # https://stackoverflow.com/questions/3777174/plotting-two-variables-as-lines-using-ggplot2-on-the-same-graph
-ggplot(data=cipesa_EXPLORE_HASHTAGS_SUMMARY,
+# remove scientific notation scales. 
+options(scipen=10000)
+
+graph1 <- ggplot(data=cipesa_EXPLORE_HASHTAGS_SUMMARY,
        aes(x=day, y=cm_hashtags, colour=source)) +
        geom_line() + 
-  scale_color_manual(values = c("#00AFBB", "#E7B800","#FC4E07" )) +
+  scale_color_manual(values = c("#00AFBB", "#FC4E07", "#E7B800")) +
   theme_minimal()
 
 
-# barplot trial. 
-t <- ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(day, weight = hashtags))
-t + geom_histogram(colour = "white", fill = "red")
+# Draw the vlines for graphics designer. 
+# used: https://statisticsglobe.com/draw-vertical-line-to-x-axis-of-class-date-in-ggplot2-plot-in-r
+dates_vline <- as.Date(c("2020-11-02", "2020-11-09", 
+                         "2020-11-16","2020-11-23", "2020-11-30",
+                         "2020-12-07", "2020-12-14", "2020-12-21",
+                         "2020-12-28"))               
+# Define positions of vline
+dates_vline <- which(cipesa_EXPLORE_HASHTAGS_SUMMARY$day %in% dates_vline)
+
+graph1 +                                                                 # Draw vlines to plot
+  geom_vline(xintercept = as.numeric(cipesa_EXPLORE_HASHTAGS_SUMMARY$day[dates_vline]),
+             col = "red", lwd = 0.2)
+
+# add each date to the graph. 
+graph1 + 
+  scale_x_date(breaks = cipesa_EXPLORE_HASHTAGS_SUMMARY$day) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+#=============
+# GRAPH - 2
+# MULTILINE FACETS TRENDS OVER TIME. 
+#=============
 
 
+```{r}
 
 # Plot per hashtag graph for all the hashtags that trended. 
-# Per hashtag. 
-top_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+# Per hashtag Per Week across to understand significant activitiies. 
+# Great tut: http://zevross.com/blog/2019/04/02/easy-multi-panel-plots-in-r-using-facet_wrap-and-facet_grid-from-ggplot2/
+
+top_FACETS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
   dplyr::group_by(hashtag) %>%
   dplyr::summarise(tweets = n()) %>%
   dplyr::arrange(desc(tweets)) %>%
-  top_n(10) %>%
+  top_n(20) %>%
   ungroup(.) %>%
   select(hashtag)
 
 
-  
 # Selections 
-final_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+final_FACETS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::filter(hashtag %in% top_TAGS_HASHTAGS$hashtag) %>%
+  dplyr::group_by(day, hashtag, source) %>%
+  dplyr::summarise(tweets = n())
+  
+# trial graph Note with colors.
+# Fix, why limits 13 only. 
+ggplot(final_FACETS_HASHTAGS, aes(x = day, y = tweets)) + 
+  geom_line(aes(color = hashtag, linetype = hashtag)) + 
+  facet_wrap(~ hashtag + source, scales = "free") +
+  theme(legend.position="none")
+
+# trial graph. without any colors. 
+ggplot(final_FACETS_HASHTAGS, aes(x = day, y = tweets)) + 
+  geom_line() + 
+  facet_wrap(~ hashtag + source, scales = "free") +
+  theme(legend.position="none")
+
+```
+
+#=============
+# GRAPH - 3
+# HASHTAG SHIFTS ACROSS THE MONTHS.  
+#=============
+
+
+```{r}
+
+# Plot per hashtag over the months.  
+cipesa_HASHTAGS_SHIFTS_DF <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF
+# dim(df)
+
+# Let's filter the data by the top 100 hashtags. 
+# Per hashtag. 
+
+top_SHIFTS_HASHTAGS <- cipesa_HASHTAGS_SHIFTS_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(50) %>%
+  ungroup(.) %>%
+  select(hashtag)
+
+
+# Selections of only the data that has the top 100 hashtags. 
+SHIFT_HASHTAGS_DF <- cipesa_HASHTAGS_SHIFTS_DF %>%
+  dplyr::filter(hashtag %in% top_SHIFTS_HASHTAGS$hashtag) %>%
+  select(date, language, year, month, week, day, text, hashtag, source) %>%
+  group_by(timestamp = cut(date, breaks="week"), source) %>%
+  summarise(n = n()) %>%
+  dplyr::mutate(prop = n / sum(n)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(week = as.factor(timestamp))
+
+# really good tut: https://thatdatatho.com/2019/04/23/my-favourite-ggplot-plot-bar-chart-presentations/
+# week by week change in Hashtags across the users. 
+ggplot(SHIFT_HASHTAGS_DF, aes(x = week, y = prop, fill = source)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(source, "\n", "\n", round(prop, 4) * 100, "%")), 
+            position = position_stack(vjust = 0.5)) +
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank())
+
+# simple barplot with portions across all the data. 
+SHIFT_PERC_HASHTAGS_DF <- cipesa_HASHTAGS_SHIFTS_DF %>%
+  dplyr::filter(hashtag %in% top_SHIFTS_HASHTAGS$hashtag) %>%
+  filter(month == 'Dec') %>%
+  select(hashtag, source) %>%
+  group_by(source, hashtag) %>% # manipulation
+  summarise(n=n_distinct(hashtag))
+
+# plot of all the unique hashtags. 
+ggplot(SHIFT_PERC_HASHTAGS_DF, aes(x = factor(source),fill=source)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count", vjust = 1.5, colour = "white")
+
+
+
+```
+
+#=============
+# GRAPH - 6
+# SENTIMENTS OVER TIME. 
+#=============
+
+```{r}
+
+library(syuzhet)
+library(scales)
+
+# notes https://juliasilge.com/blog/joy-to-the-world/
+cipesa_HASHTAGS_SENTIMENT_DF <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF
+# dim(df)
+
+# Let's filter the data by the top 50 hashtags
+# Per hashtag. 
+top_SENTIMENT_HASHTAGS <- cipesa_HASHTAGS_SENTIMENT_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(50) %>%
+  ungroup(.) %>%
+  select(hashtag)
+
+
+# Selections of only the data that has the top 50 hashtags. 
+SENTIMENT_HASHTAGS_DF <- cipesa_HASHTAGS_SENTIMENT_DF %>%
+  dplyr::filter(hashtag %in% top_SENTIMENT_HASHTAGS$hashtag) %>%
+  select(date, language, year, month, week, day, text, hashtag, source)
+
+
+# Get all the data for the  
+# Approx. 3 model running. 
+# mySentiment <- get_nrc_sentiment(SENTIMENT_HASHTAGS_DF$text)
+
+
+
+# FILE: mySentiment
+# write.csv(mySentiment, file="~/CIPESA/perceptions21/Data/mySentiment.csv",
+#          row.names=FALSE)
+mySentiment <- read_csv("~/CIPESA/perceptions21/Data/mySentiment.csv") # data downloaded from twitter from folder.  
+
+
+# add text to sentiment scores. 
+final_SENTIMENT_HASHTAGS_DF <- cbind(SENTIMENT_HASHTAGS_DF, mySentiment) %>%
+  filter(language == 'en')
+
+# ----------
+# use specific hashtag e.g #stophooliganism
+# TODO: To move this somewhere else. 
+final_SENTIMENT_HASHTAGS_DF <- final_SENTIMENT_HASHTAGS_DF %>%
+  dplyr::filter(hashtag %in% c('#stoppolicebrutalityinuganda')) 
+
+# check the sentiment for 18/19 spike. 
+final_SENTIMENT_HASHTAGS_DF <- final_SENTIMENT_HASHTAGS_DF %>%
+  filter(between(date, as.Date("2020-11-18"),as.Date("2020-11-19")))
+  #dplyr::filter(date %in% c("2020-11-18", "2020-11-19")) 
+#---------------------------
+
+
+# look into the data. 
+sentimentTotals <- data.frame(colSums(final_SENTIMENT_HASHTAGS_DF[,c(10:17)]))
+sentimentMood <- data.frame(colSums(final_SENTIMENT_HASHTAGS_DF[,c(18:19)]))
+
+names(sentimentTotals) <- "count"
+names(sentimentMood) <- "count"
+
+sentimentTotals <- cbind("sentiment" = rownames(sentimentTotals), sentimentTotals)
+sentimentMood <- cbind("sentiment" = rownames(sentimentMood), sentimentMood)
+
+rownames(sentimentTotals) <- NULL
+rownames(sentimentMood) <- NULL
+
+
+ggplot(data = sentimentTotals, aes(x = sentiment, y = count)) +
+  geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme(legend.position = "none") +
+  xlab("Sentiment") + 
+  ylab("Total Count") + 
+  ggtitle("Total Sentiment Score for All UG Election (en)Tweets")
+
+# getting the percentage per emotion.
+sentimentTotals %>%
+mutate(perc = (count / sum(count)) * 100) -> sentimentTotals2
+
+ggplot(sentimentTotals2, aes(x = sentiment, y = perc)) + 
+  geom_bar(stat = "identity")
+
+# plot gplot./ 
+#plot the first 8 rows,the distinct emotions
+qplot(sentiment, data=sentimentTotals, weight=count,
+      geom="bar",fill=sentiment) + 
+  ggtitle("Total Sentiment Score for All UG Election (en)Tweets")
+
+#pos_neg breakdown. 
+#plot the last 2 rows ,positive and negative
+qplot(sentiment, data=sentimentMood, weight=count, 
+      geom="bar",fill=sentiment)+ggtitle("TedTalk Sentiments")
+
+
+# overtime how has this come about. 
+library(reshape2)
+
+final_SENTIMENT_HASHTAGS_DF$timestamp <- final_SENTIMENT_HASHTAGS_DF$date
+posnegtime <- final_SENTIMENT_HASHTAGS_DF %>% 
+  group_by(timestamp = cut(timestamp, breaks="week")) %>%
+  summarise(negative = sum(negative),
+            positive = sum(positive)) %>% 
+    melt %>%
+  ungroup() %>%
+  group_by(timestamp) %>%
+  mutate(per= as.numeric(paste0(round(value/sum(value)*100, 2)))) %>% 
+       ungroup
+
+
+names(posnegtime) <- c("timestamp", "sentiment", "total", "percentage")
+posnegtime$sentiment = factor(posnegtime$sentiment,levels(posnegtime$sentiment)[c(2,1)])
+
+ggplot(data = posnegtime, aes(x = as.Date(timestamp), y = percentage, group = sentiment)) +
+  geom_line(size = 2.5, alpha = 0.7, aes(color = sentiment)) +
+  geom_point(size = 0.5) +
+  ylim(0, NA) + 
+  scale_colour_manual(values = c("springgreen4", "firebrick3")) +
+  theme(legend.title=element_blank(), axis.title.x = element_blank()) +
+  scale_x_date(breaks = date_breaks("week"), 
+               labels = date_format("%Y-%b-%d")) +
+  ylab("Average sentiment score") + 
+  ggtitle("Sentiment Over Time")
+
+
+
+ggplot(data = posnegtime, aes(x = as.Date(timestamp), y = percentage, group = sentiment)) + 
+    geom_bar(position="stack", stat="identity")
+
+
+# detailed sentiment across the users. 
+
+# tweets$week <- month(tweets$timestamp, label = TRUE)
+weeksentiment <- final_SENTIMENT_HASHTAGS_DF %>% 
+  group_by(timestamp = cut(timestamp, breaks="week")) %>%
+  summarise(anger = mean(anger), 
+            anticipation = mean(anticipation), 
+            disgust = mean(disgust), 
+            fear = mean(fear), 
+            joy = mean(joy), 
+            sadness = mean(sadness), 
+            surprise = mean(surprise), 
+            trust = mean(trust)) %>% melt 
+names(weeksentiment) <- c("week", "sentiment", "meanvalue")
+
+graph6 <- ggplot(data = weeksentiment, aes(x = week, y = meanvalue, group = sentiment)) +
+  geom_line(size = 0.5, alpha = 0.7, aes(color = sentiment)) +
+  geom_point(size = 0.5) +
+  ylim(0, NA) +
+  theme(legend.title=element_blank(), axis.title.x = element_blank()) +
+  ylab("Average sentiment score") + 
+  ggtitle("Sentiment across the months")
+
+# add each date to the graph. 
+graph6 + 
+  # scale_x_date(breaks = final_SENTIMENT_HASHTAGS_DF$date) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+
+
+
+```
+#=============
+# GRAPH - 8
+# HASHTAG WARS - UNDERSTANDING THE BOTS AND SOCK PUPPETS. 
+#=============
+
+
+```{r}
+
+# Plot per hashtag graph for all the hashtags that trended. 
+
+# Selections 
+final_BOTS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::filter(hashtag %in% c("#stoppolicebrutalityinuganda", "#stophooliganism") )%>%
+  dplyr::group_by(day, hashtag) %>%
+  dplyr::summarise(tags = n()) %>%
+  ungroup(.) %>%
+  dplyr::group_by(hashtag) %>%
+  mutate("cm_hashtags" = cumsum(tags)) # use of cumsums 
+
+# plot the graph trends. 
+# Multiple line plot
+# https://stackoverflow.com/questions/3777174/plotting-two-variables-as-lines-using-ggplot2-on-the-same-graph
+# remove scientific notation scales. 
+options(scipen=10000)
+
+ggplot(data=final_BOTS_HASHTAGS,
+       aes(x=day, y=cm_hashtags, colour=hashtag)) +
+       geom_line() + 
+  scale_color_manual(values = c("#E7B800", "#FC4E07")) +
+  theme_minimal()
+  
+
+
+```
+
+#=============
+# GRAPH - 9
+# AVERAGE ENGAGEMENT, LIKES, TWEETS AND COMMENTS.
+#=============
+
+```{r}
+
+# notes understand engagement as across the weeks. 
+cipesa_HASHTAGS_ENGAGEMENT_DF <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF
+# dim(df)
+
+# getting rowsums totals
+# https://stackoverflow.com/questions/28873057/sum-across-multiple-columns-with-dplyr
+
+weekengagement <- cipesa_HASHTAGS_ENGAGEMENT_DF %>%
+  select(date, text, replies_count, retweets_count, likes_count) %>%
+  dplyr::rowwise() %>% 
+  dplyr::mutate(sumrange = sum(dplyr::c_across(replies_count:likes_count)/3, 
+                               na.rm = T))  %>%
+  arrange(desc(sumrange)) %>% 
+ group_by(date) %>% slice(1:10)
+
+
+# FILE: top 10 engagement tweets across the dates. 
+# write.csv(weekengagement, file="~/CIPESA/perceptions21/Data/weekengagement_HASHTAGS_AFFILIATION_JOINED_DF.csv",
+#         row.names=FALSE)
+
+
+# Researchers and Content raters to categorize the topics. 
+# read the file. 
+weekengagement_JOINED_DF <- read_csv("~/CIPESA/perceptions21/Data/weekengagement_HASHTAGS_AFFILIATION_JOINED_DF.csv") # data downloaded from twitter from folder.  
+
+weekengagement_ENGAGEMENT_JOINED_DF <- weekengagement_JOINED_DF %>%
+  select(-text) %>%
+  group_by(date, topics) %>%
+  summarise(meanrangesum = mean(meanrange))
+
+topics <- unique(weekengagement_ENGAGEMENT_JOINED_DF$topics)
+
+# view topics. 
+# view(unique(weekengagement_ENGAGEMENT_JOINED_DF$topics))
+write.csv(weekengagement_ENGAGEMENT_WIDE_DF, file="~/CIPESA/perceptions21/Data/ENGAGEMENT.csv",
+         row.names=FALSE)
+
+# find the scale 
+weekengagement_ENGAGEMENT_JOINED_DF$engage_norm<-hist(weekengagement_ENGAGEMENT_JOINED_DF$meanrangesum)
+ggplot(weekengagement_ENGAGEMENT_JOINED_DF, aes(x=meanrangesum)) +
+geom_histogram(binwidth = 50, colour="black", fill="#00AFBB")
+
+# transpose long to wide. 
+weekengagement_ENGAGEMENT_WIDE_DF <- 
+  weekengagement_ENGAGEMENT_JOINED_DF %>%
+  spread(date, meanrangesum)
+
+
+
+```
+
+
+
+#=============
+# GRAPH - 10
+# ALLUVIAL FLOW OF HASHTAGS OVER TIME. 
+#=============
+
+```{r}
+
+# additional alluvial spread of hashtags.
+library(alluvial)
+
+ALLUVIAL_HASHTAGS <- SENTIMENT_HASHTAGS_DF
+
+# dim - 1422239       9
+
+# Survival status, Sex, and Class
+ALLUVIAL_HASHTAGS %>% 
+  mutate(weekof = cut(date, breaks="week")) %>%
+  group_by(weekof, month, source, hashtag) %>%
+  summarise(n = n()) -> tit3d 
+  # mutate(month = fct_relevel(as.factor(month), c("Nov", "Dec"))) -> tit3d 
+
+
+# load alluvial v1. 
+alluvial(tit3d[,1:4], 
+         freq=tit3d$n,
+         col=case_when(tit3d$source == "opposition" ~ "red",
+                       tit3d$source == "ruling" ~ "orange",
+                       TRUE ~ "grey"),
+         layer = tit3d$month == "Nov",
+         cex=0.75,
+         #axis_labels = c("weekof", "month", "source", "hashtag"),
+         hide = tit3d$n < 150)
+
+
+library(ggalluvial)
+# load v2 ordering examples
+gg <- ggplot(as.data.frame(tit3d),
+             aes(y = n,
+                 axis1 = weekof, axis2 = month, 
+                 axis3 = source, axis4 = hashtag)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("weekof", "month", "source", "hashtag"))
+# use of lode controls
+gg + geom_flow(aes(fill = source, alpha = month), stat = "alluvium",
+               lode.guidance = "forward")
+
+# Note; Help designers with data visualizations here. 
+
+
+
+
+# Selections of only the data that has the top 50 hashtags. 
+tit3d_designers <- tit3d %>%
+  group_by(weekof, month, source) %>%
+  summarise(total = sum(n)) %>%
+  dplyr::mutate(percentage = (total / sum(total)*100) )
+
+
+# write down the sample data for designers. 
+# FILE: top 10 engagement tweets. 
+write.csv(tit3d, file="~/CIPESA/perceptions21/Data/tit3d.csv",
+          row.names=FALSE)
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+# Plot per hashtag graph for all the hashtags that trended. 
+# Per hashtag. 
+top_TAGS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(15) %>%
+  ungroup(.) %>%
+  select(hashtag)
+
+
+# Selections 
+final_TAGS_HASHTAGS <- cipesa_HASHTAGS_AFFILIATION_JOINED_DF %>%
   dplyr::filter(hashtag %in% top_TAGS_HASHTAGS$hashtag) %>%
   dplyr::group_by(day, hashtag) %>%
   dplyr::summarise(tweets = n())
@@ -201,13 +730,12 @@ ggplot(final_TAGS_HASHTAGS, aes(x = day, y = tweets)) +
 
 
 
-
-
-
-
-
-
 ```{r}
+
+# barplot trial. 
+t <- ggplot(cipesa_EXPLORE_HASHTAGS_SUMMARY, aes(day, weight = hashtags))
+t + geom_histogram(colour = "white", fill = "red")
+
 
 # most re-tweeted tweets. 
 # This will come in handy to get the top discussions across the weeks/days.
@@ -278,5 +806,53 @@ cipesa_MENTIONS
 # visualize the cloud
 cipesa_MENTIONS %>% 
   with(wordcloud(word, n, random.order = FALSE, max.words = 100, colors = "#F29545"))
+
+
+
+# part: 2
+  group_by(timestamp = cut(date, breaks="week")) %>%
+  summarise(replies_count = mean(replies_count), 
+            retweets_count = mean(retweets_count), 
+            likes_count = mean(likes_count)) %>% melt %>%
+   mutate(variable = as.character(variable),
+          week = as.POSIXct(as.character(timestamp, format = "%Y/%m/%d"))) 
+
+# rename columns. 
+names(weekengagement) <- c("week", "engagement", "meanvalue")
+
+# removes sci notations. 
+options(scipen=10000)
+
+# Visualization
+ggplot(weekengagement, aes(x = week, y = meanvalue)) + 
+  geom_line(aes(color = engagement), size = 1, group = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) +
+  theme_minimal()
+
+
+
+
+# Plot per hashtag graph for all the hashtags that trended. 
+# Per hashtag. 
+top_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::group_by(hashtag) %>%
+  dplyr::summarise(tweets = n()) %>%
+  dplyr::arrange(desc(tweets)) %>%
+  top_n(10) %>%
+  ungroup(.) %>%
+  select(hashtag)
+
+
+# Selections 
+final_TAGS_HASHTAGS <- cipesa_EXPLORE_HASHTAGS_DF %>%
+  dplyr::filter(hashtag %in% top_TAGS_HASHTAGS$hashtag) %>%
+  dplyr::group_by(day, hashtag) %>%
+  dplyr::summarise(tweets = n())
+  
+# trial graph. 
+ggplot(final_TAGS_HASHTAGS, aes(x = day, y = tweets)) + 
+  geom_line(aes(color = hashtag, linetype = hashtag)) 
+
+
 
 ```
